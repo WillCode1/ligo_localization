@@ -1,0 +1,9 @@
+pgo:
+    # keyframe_add_dist_threshold: 1
+    keyframe_add_dist_threshold: 2.5
+    keyframe_add_angle_threshold: 0.2
+
+    # save_globalmap_en: true
+    save_resolution: 0.2
+    save_keyframe_en: true
+    # map_path: "/home/will/data/test_mapping/mapping1"
