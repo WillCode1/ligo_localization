@@ -65,7 +65,7 @@
 
 #define PGO
 #ifdef PGO
-#include "backend_optimization/pgo/Backend.hpp"
+#include "backend_optimization/Header.h"
 #endif
 
 using IVoxType = faster_lio::IVox<3, faster_lio::IVoxNodeType::DEFAULT, PointType>;
