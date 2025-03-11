@@ -36,7 +36,7 @@
 
 #include "parameters.h"
 
-#ifdef PGO
+#if 1
 FILE *location_log = nullptr;
 #endif
 

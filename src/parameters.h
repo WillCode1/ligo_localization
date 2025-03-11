@@ -63,8 +63,7 @@
 #include <geometry_msgs/Vector3.h>
 #include <Curvefitter/curvefitter.hpp>
 
-#define PGO
-#ifdef PGO
+#if 1
 #include "backend_optimization/Header.h"
 #endif
 

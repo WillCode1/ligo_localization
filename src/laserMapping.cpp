@@ -294,35 +294,35 @@ void publish_path(const ros::Publisher pubPath)
 void load_parameters()
 {
     relocalization = make_shared<Relocalization>();
-    ros::param::param("scan_context/lidar_height", relocalization->sc_manager->LIDAR_HEIGHT, 2.0);
-    ros::param::param("scan_context/sc_dist_thres", relocalization->sc_manager->SC_DIST_THRES, 0.5);
+    ros::param::param("/laserMapping/scan_context/lidar_height", relocalization->sc_manager->LIDAR_HEIGHT, 2.0);
+    ros::param::param("/laserMapping/scan_context/sc_dist_thres", relocalization->sc_manager->SC_DIST_THRES, 0.5);
 
-    ros::param::param("mapping/extrinsicT_imu2gnss", extrinT, vector<double>());
-    ros::param::param("mapping/extrinsicR_imu2gnss", extrinR, vector<double>());
+    ros::param::param("/laserMapping/mapping/extrinsicT_imu2gnss", extrinT, vector<double>());
+    ros::param::param("/laserMapping/mapping/extrinsicR_imu2gnss", extrinR, vector<double>());
     V3D extrinT_eigen;
     M3D extrinR_eigen;
     extrinT_eigen << VEC_FROM_ARRAY(extrinT);
     extrinR_eigen << MAT_FROM_ARRAY(extrinR);
     relocalization->set_extrinsic(extrinT_eigen, extrinR_eigen);
 
-    ros::param::param("relocalization_cfg/algorithm_type", relocalization->algorithm_type, std::string("UNKONW"));
+    ros::param::param("/laserMapping/relocalization_cfg/algorithm_type", relocalization->algorithm_type, std::string("UNKONW"));
 
     BnbOptions match_option;
-    ros::param::param("bnb3d/linear_xy_window_size", match_option.linear_xy_window_size, 10.);
-    ros::param::param("bnb3d/linear_z_window_size", match_option.linear_z_window_size, 1.);
-    ros::param::param("bnb3d/angular_search_window", match_option.angular_search_window, 30.);
-    ros::param::param("bnb3d/pc_resolutions", match_option.pc_resolutions, vector<double>());
-    ros::param::param("bnb3d/bnb_depth", match_option.bnb_depth, 5);
-    ros::param::param("bnb3d/min_score", match_option.min_score, 0.1);
-    ros::param::param("bnb3d/enough_score", match_option.enough_score, 0.8);
-    ros::param::param("bnb3d/min_xy_resolution", match_option.min_xy_resolution, 0.2);
-    ros::param::param("bnb3d/min_z_resolution", match_option.min_z_resolution, 0.1);
-    ros::param::param("bnb3d/min_angular_resolution", match_option.min_angular_resolution, 0.1);
-    ros::param::param("bnb3d/filter_size_scan", match_option.filter_size_scan, 0.1);
-    ros::param::param("bnb3d/debug_mode", match_option.debug_mode, false);
+    ros::param::param("/laserMapping/bnb3d/linear_xy_window_size", match_option.linear_xy_window_size, 10.);
+    ros::param::param("/laserMapping/bnb3d/linear_z_window_size", match_option.linear_z_window_size, 1.);
+    ros::param::param("/laserMapping/bnb3d/angular_search_window", match_option.angular_search_window, 30.);
+    ros::param::param("/laserMapping/bnb3d/pc_resolutions", match_option.pc_resolutions, vector<double>());
+    ros::param::param("/laserMapping/bnb3d/bnb_depth", match_option.bnb_depth, 5);
+    ros::param::param("/laserMapping/bnb3d/min_score", match_option.min_score, 0.1);
+    ros::param::param("/laserMapping/bnb3d/enough_score", match_option.enough_score, 0.8);
+    ros::param::param("/laserMapping/bnb3d/min_xy_resolution", match_option.min_xy_resolution, 0.2);
+    ros::param::param("/laserMapping/bnb3d/min_z_resolution", match_option.min_z_resolution, 0.1);
+    ros::param::param("/laserMapping/bnb3d/min_angular_resolution", match_option.min_angular_resolution, 0.1);
+    ros::param::param("/laserMapping/bnb3d/filter_size_scan", match_option.filter_size_scan, 0.1);
+    ros::param::param("/laserMapping/bnb3d/debug_mode", match_option.debug_mode, false);
 
-    ros::param::param("mapping/extrinsic_T", extrinT, vector<double>());
-    ros::param::param("mapping/extrinsic_R", extrinR, vector<double>());
+    ros::param::param("/laserMapping/mapping/extrinsic_T", extrinT, vector<double>());
+    ros::param::param("/laserMapping/mapping/extrinsic_R", extrinR, vector<double>());
     extrinT_eigen << VEC_FROM_ARRAY(extrinT);
     extrinR_eigen << MAT_FROM_ARRAY(extrinR);
     V3D ext_rpy = EigenMath::RotationMatrix2RPY(extrinR_eigen);
@@ -336,19 +336,19 @@ void load_parameters()
     relocalization->set_bnb3d_param(match_option, lidar_extrinsic);
 
     double step_size, resolution;
-    ros::param::param("ndt/step_size", step_size, 0.1);
-    ros::param::param("ndt/resolution", resolution, 1.);
+    ros::param::param("/laserMapping/ndt/step_size", step_size, 0.1);
+    ros::param::param("/laserMapping/ndt/resolution", resolution, 1.);
     relocalization->set_ndt_param(step_size, resolution);
 
     bool use_gicp;
     double gicp_downsample, filter_range, search_radius, teps, feps, fitness_score;
-    ros::param::param("gicp/use_gicp", use_gicp, true);
-    ros::param::param("gicp/filter_range", filter_range, 80.);
-    ros::param::param("gicp/gicp_downsample", gicp_downsample, 0.2);
-    ros::param::param("gicp/search_radius", search_radius, 0.5);
-    ros::param::param("gicp/teps", teps, 1e-3);
-    ros::param::param("gicp/feps", feps, 1e-3);
-    ros::param::param("gicp/fitness_score", fitness_score, 0.3);
+    ros::param::param("/laserMapping/gicp/use_gicp", use_gicp, true);
+    ros::param::param("/laserMapping/gicp/filter_range", filter_range, 80.);
+    ros::param::param("/laserMapping/gicp/gicp_downsample", gicp_downsample, 0.2);
+    ros::param::param("/laserMapping/gicp/search_radius", search_radius, 0.5);
+    ros::param::param("/laserMapping/gicp/teps", teps, 1e-3);
+    ros::param::param("/laserMapping/gicp/feps", feps, 1e-3);
+    ros::param::param("/laserMapping/gicp/fitness_score", fitness_score, 0.3);
     relocalization->set_gicp_param(use_gicp, filter_range, gicp_downsample, search_radius, teps, feps, fitness_score);
 }
 
@@ -429,13 +429,13 @@ void init_system_mode()
     }
     LOG_WARN("Load trajectory poses successfully! There are %lu poses.", relocalization->trajectory_poses->points.size());
 
-    if (!relocalization->load_keyframe_descriptor(scd_path))
-    {
-        relocalization->algorithm_type = "manually_set";
-        LOG_ERROR("Load keyframe descriptor failed, set algorithm_type to manually_set!");
-    }
-    else
-        LOG_WARN("Load keyframe descriptor successfully! There are %lu descriptors.", relocalization->sc_manager->polarcontexts_.size());
+    // if (!relocalization->load_keyframe_descriptor(scd_path))
+    // {
+    //     relocalization->algorithm_type = "manually_set";
+    //     LOG_ERROR("Load keyframe descriptor failed, set algorithm_type to manually_set!");
+    // }
+    // else
+    //     LOG_WARN("Load keyframe descriptor successfully! There are %lu descriptors.", relocalization->sc_manager->polarcontexts_.size());
 
     /*** initialize the map kdtree ***/
     init_global_map(global_map);
@@ -591,6 +591,7 @@ int main(int argc, char** argv)
             sub_rtk_pvt_info = nh.subscribe(rtk_pvt_topic, 100, rtk_pvt_callback);
         }
     }
+#if 0
     #ifdef process_ppp
     if (NMEA_ENABLE)
     {
@@ -672,6 +673,7 @@ int main(int argc, char** argv)
         // sub_nmea_meas = nh.subscribe(nmea_meas_topic, 10000, nmea_meas_callback);
         // sub_nmea_meas = nh.subscribe(nmea_meas_topic, 10000, gpsHandler);
     }
+#endif
 
     ros::Publisher pubLaserCloudFullRes = nh.advertise<sensor_msgs::PointCloud2>
             ("/cloud_registered", 1000);
@@ -699,7 +701,7 @@ int main(int argc, char** argv)
         ros::spinOnce();
         if(sync_packages(Measures, p_gnss->gnss_msg, p_nmea->nmea_msg)) 
         {
-#ifndef PGO
+#if 0
             if (!p_gnss->gnss_ready)
             {
                 if (!p_gnss->gnss_msg.empty() && GNSS_ENABLE)
@@ -724,7 +726,7 @@ int main(int argc, char** argv)
                 }
             }
 #endif
-#ifdef PGO
+#if 1
             if (!system_state_vaild)
             {
                 run_relocalization(Measures.lidar, 0);
@@ -1507,12 +1509,14 @@ int main(int argc, char** argv)
                         /******* Publish odometry *******/
 
                         publish_odometry(pubOdomAftMapped);
+#if 0
                         if (runtime_pos_log)
                         {
                             euler_cur = SO3ToEuler(kf_output.x_.rot);
                             fout_out << setw(20) << Measures.lidar_beg_time - first_lidar_time << " " << kf_output.x_.pos.transpose() << " " << euler_cur.transpose() << " " << kf_output.x_.vel.transpose() \
                             <<" "<<kf_output.x_.omg.transpose()<<" "<<kf_output.x_.acc.transpose()<<" "<<kf_output.x_.gravity.transpose()<<" "<<kf_output.x_.bg.transpose()<<" "<<kf_output.x_.ba.transpose() << endl;
                         }
+#endif
                     }
                     std::vector<Eigen::Vector3d> lidarpoints;
                     for (int j = 0; j < time_seq[k]; j++)
@@ -1960,6 +1964,7 @@ int main(int argc, char** argv)
             if (scan_pub_en || pcd_save_en)      publish_frame_world(pubLaserCloudFullRes);
             if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFullRes_body);
 
+#if 0
             /*** Debug variables Logging ***/
             if (runtime_pos_log)
             {
@@ -1983,10 +1988,12 @@ int main(int argc, char** argv)
                     }
                 }
             }
+#endif
         }
         status = ros::ok();
         loop_rate.sleep();
     }
+#if 0
     fout_out.close();
 
     //--------------------------save map-----------------------------------
@@ -2035,6 +2042,7 @@ int main(int argc, char** argv)
     }
     fout_ppp.close();
     #endif
+#endif
     
     return 0;
 }
