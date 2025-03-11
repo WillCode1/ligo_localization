@@ -545,9 +545,32 @@ int main(int argc, char** argv)
         ros::spinOnce();
         if(sync_packages(Measures, p_gnss->gnss_msg, p_nmea->nmea_msg)) 
         {
-#ifdef PGO
-            Timer timer;
+#ifndef PGO
+            if (!p_gnss->gnss_ready)
+            {
+                if (!p_gnss->gnss_msg.empty() && GNSS_ENABLE)
+                {
+                    gnss_cur = p_gnss->gnss_msg.front();
+                    while (time2sec(gnss_cur[0]->time) - time_diff_gnss_local < Measures.lidar_beg_time)
+                    {
+                        p_gnss->gnss_msg.pop();
+                        if (!p_gnss->gnss_msg.empty())
+                            gnss_cur = p_gnss->gnss_msg.front();
+                        else
+                            break;
+                    }
+
+                    p_gnss->processGNSS(gnss_cur, kf_output.x_);
+                    // p_gnss->sqrt_lidar = Eigen::LLT<Eigen::Matrix<double, 24, 24>>(kf_output.P_.inverse()).matrixL().transpose();
+                    // update_gnss = p_gnss->Evaluate(kf_output.x_);
+                    if (!p_gnss->gnss_ready)
+                    {
+                        continue;
+                    }
+                }
+            }
 #endif
+            Timer timer;
             if (flg_reset)
             {
                 ROS_WARN("reset when rosbag play back");
