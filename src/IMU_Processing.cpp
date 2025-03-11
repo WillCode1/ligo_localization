@@ -35,6 +35,7 @@
  */
 
 #include "IMU_Processing.h"
+#include "backend_optimization/Header.h"
 
 const bool time_list(PointType &x, PointType &y) {return (x.curvature < y.curvature);};
 
@@ -117,6 +118,10 @@ void ImuProcess::Set_init(Eigen::Vector3d &tmp_gravity, Eigen::Matrix3d &rot)
     rot = Exp(align_angle(0), align_angle(1), align_angle(2));
     rot = Eigen::Quaterniond(rot).normalized().toRotationMatrix();
   }
+
+  V3D rpy = EigenMath::RotationMatrix2RPY(rot);
+  rpy.z() = 0;
+  rot = EigenMath::RPY2RotationMatrix(rpy);
 }
 
 void ImuProcess::IMU_init(const MeasureGroup &meas, int &N)

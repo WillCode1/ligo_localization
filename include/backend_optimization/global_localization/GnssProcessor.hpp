@@ -1,9 +1,8 @@
 #pragma once
 #include <deque>
-#include "DataDef.h"
-#include "system/Header.h"
-#include "global_localization/UtmCoordinate.h"
-#include "global_localization/EnuCoordinate.h"
+#include "backend_optimization/Header.h"
+#include "UtmCoordinate.h"
+#include "EnuCoordinate.h"
 #define ENU
 
 struct GnssPose

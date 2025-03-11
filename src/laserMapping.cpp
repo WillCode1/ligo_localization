@@ -51,6 +51,7 @@
 #include <opencv2/opencv.hpp>
 #include "chi-square.h"
 // #include <ros/console.h>
+#include "backend_optimization/global_localization/Relocalization.hpp"
 
 
 #define PUBFRAME_PERIOD     (20)
@@ -75,6 +76,7 @@ PointCloudXYZI::Ptr feats_down_body_space(new PointCloudXYZI());
 PointCloudXYZI::Ptr init_feats_world(new PointCloudXYZI());
 std::deque<PointCloudXYZI::Ptr> depth_feats_world;
 pcl::VoxelGrid<PointType> downSizeFilterSurf;
+shared_ptr<Relocalization> relocalization;
 
 V3D euler_cur;
 
@@ -289,6 +291,156 @@ void publish_path(const ros::Publisher pubPath)
     }
 }        
 
+void load_parameters()
+{
+    relocalization = make_shared<Relocalization>();
+    ros::param::param("scan_context/lidar_height", relocalization->sc_manager->LIDAR_HEIGHT, 2.0);
+    ros::param::param("scan_context/sc_dist_thres", relocalization->sc_manager->SC_DIST_THRES, 0.5);
+
+    ros::param::param("mapping/extrinsicT_imu2gnss", extrinT, vector<double>());
+    ros::param::param("mapping/extrinsicR_imu2gnss", extrinR, vector<double>());
+    V3D extrinT_eigen;
+    M3D extrinR_eigen;
+    extrinT_eigen << VEC_FROM_ARRAY(extrinT);
+    extrinR_eigen << MAT_FROM_ARRAY(extrinR);
+    relocalization->set_extrinsic(extrinT_eigen, extrinR_eigen);
+
+    ros::param::param("relocalization_cfg/algorithm_type", relocalization->algorithm_type, std::string("UNKONW"));
+
+    BnbOptions match_option;
+    ros::param::param("bnb3d/linear_xy_window_size", match_option.linear_xy_window_size, 10.);
+    ros::param::param("bnb3d/linear_z_window_size", match_option.linear_z_window_size, 1.);
+    ros::param::param("bnb3d/angular_search_window", match_option.angular_search_window, 30.);
+    ros::param::param("bnb3d/pc_resolutions", match_option.pc_resolutions, vector<double>());
+    ros::param::param("bnb3d/bnb_depth", match_option.bnb_depth, 5);
+    ros::param::param("bnb3d/min_score", match_option.min_score, 0.1);
+    ros::param::param("bnb3d/enough_score", match_option.enough_score, 0.8);
+    ros::param::param("bnb3d/min_xy_resolution", match_option.min_xy_resolution, 0.2);
+    ros::param::param("bnb3d/min_z_resolution", match_option.min_z_resolution, 0.1);
+    ros::param::param("bnb3d/min_angular_resolution", match_option.min_angular_resolution, 0.1);
+    ros::param::param("bnb3d/filter_size_scan", match_option.filter_size_scan, 0.1);
+    ros::param::param("bnb3d/debug_mode", match_option.debug_mode, false);
+
+    ros::param::param("mapping/extrinsic_T", extrinT, vector<double>());
+    ros::param::param("mapping/extrinsic_R", extrinR, vector<double>());
+    extrinT_eigen << VEC_FROM_ARRAY(extrinT);
+    extrinR_eigen << MAT_FROM_ARRAY(extrinR);
+    V3D ext_rpy = EigenMath::RotationMatrix2RPY(extrinR_eigen);
+    Pose lidar_extrinsic;
+    lidar_extrinsic.x = extrinT_eigen.x();
+    lidar_extrinsic.y = extrinT_eigen.y();
+    lidar_extrinsic.z = extrinT_eigen.z();
+    lidar_extrinsic.roll = ext_rpy.x();
+    lidar_extrinsic.pitch = ext_rpy.y();
+    lidar_extrinsic.yaw = ext_rpy.z();
+    relocalization->set_bnb3d_param(match_option, lidar_extrinsic);
+
+    double step_size, resolution;
+    ros::param::param("ndt/step_size", step_size, 0.1);
+    ros::param::param("ndt/resolution", resolution, 1.);
+    relocalization->set_ndt_param(step_size, resolution);
+
+    bool use_gicp;
+    double gicp_downsample, filter_range, search_radius, teps, feps, fitness_score;
+    ros::param::param("gicp/use_gicp", use_gicp, true);
+    ros::param::param("gicp/filter_range", filter_range, 80.);
+    ros::param::param("gicp/gicp_downsample", gicp_downsample, 0.2);
+    ros::param::param("gicp/search_radius", search_radius, 0.5);
+    ros::param::param("gicp/teps", teps, 1e-3);
+    ros::param::param("gicp/feps", feps, 1e-3);
+    ros::param::param("gicp/fitness_score", fitness_score, 0.3);
+    relocalization->set_gicp_param(use_gicp, filter_range, gicp_downsample, search_radius, teps, feps, fitness_score);
+}
+
+bool system_state_vaild = false;
+
+bool run_relocalization(PointCloudType::Ptr scan, const double &lidar_beg_time)
+{
+    if (!system_state_vaild)
+    {
+        Eigen::Matrix4d imu_pose;
+        if (relocalization->run(scan, imu_pose, lidar_beg_time))
+        {
+            kf_output.x_.rot = M3D(imu_pose.topLeftCorner(3, 3));
+            kf_output.x_.pos = V3D(imu_pose.topRightCorner(3, 1));
+            kf_output.x_.vel.setZero();
+            kf_output.x_.ba.setZero();
+            kf_output.x_.bg.setZero();
+            system_state_vaild = true;
+        }
+        else
+        {
+#ifdef DEDUB_MODE
+            kf_output.x_.rot = M3D(imu_pose.topLeftCorner(3, 3));
+            kf_output.x_.pos = V3D(imu_pose.topRightCorner(3, 1));
+            kf_output.x_.vel.setZero();
+            kf_output.x_.ba.setZero();
+            kf_output.x_.bg.setZero();
+#endif
+        }
+    }
+    return system_state_vaild;
+}
+
+void init_global_map(PointCloudType::Ptr &submap)
+{
+    if (!ivox_->grids_map_.empty())
+    {
+        LOG_ERROR("Error, ivox not null when initializing the map!");
+        std::exit(100);
+    }
+    ivox_->AddPoints(submap->points);
+}
+
+void init_system_mode()
+{
+    string globalmap_path = PCD_FILE_DIR("globalmap.pcd");
+    string trajectory_path = PCD_FILE_DIR("trajectory.pcd");
+    string scd_path = PCD_FILE_DIR("scancontext/");
+
+    /*** init localization mode ***/
+    if (access(globalmap_path.c_str(), F_OK) != 0)
+    {
+        LOG_ERROR("File not exist! Please check the \"globalmap_path\".");
+        std::exit(100);
+    }
+
+    Timer timer;
+    PointCloudType::Ptr global_map;
+    global_map.reset(new PointCloudType());
+    pcl::io::loadPCDFile(globalmap_path, *global_map);
+    if (global_map->points.size() < 5000)
+    {
+        LOG_ERROR("Too few point clouds! Please check the map file.");
+        std::exit(100);
+    }
+    LOG_WARN("Load pcd successfully! There are %lu points in map. Cost time %fms.", global_map->points.size(), timer.elapsedLast());
+
+    if (!relocalization->load_prior_map(global_map))
+    {
+        std::exit(100);
+    }
+
+    pcl::io::loadPCDFile(trajectory_path, *relocalization->trajectory_poses);
+    if (relocalization->trajectory_poses->points.size() < 10)
+    {
+        LOG_ERROR("Too few point clouds! Please check the trajectory file.");
+        std::exit(100);
+    }
+    LOG_WARN("Load trajectory poses successfully! There are %lu poses.", relocalization->trajectory_poses->points.size());
+
+    if (!relocalization->load_keyframe_descriptor(scd_path))
+    {
+        relocalization->algorithm_type = "manually_set";
+        LOG_ERROR("Load keyframe descriptor failed, set algorithm_type to manually_set!");
+    }
+    else
+        LOG_WARN("Load keyframe descriptor successfully! There are %lu descriptors.", relocalization->sc_manager->polarcontexts_.size());
+
+    /*** initialize the map kdtree ***/
+    init_global_map(global_map);
+}
+
 int main(int argc, char** argv)
 {
     ros::init(argc, argv, "laserMapping");
@@ -299,6 +451,8 @@ int main(int argc, char** argv)
     cout<<"lidar_type: "<<lidar_type<<endl;
     ivox_ = std::make_shared<IVoxType>(ivox_options_);
     ivox_last_ = std::make_shared<IVoxType>(ivox_options_); //(*ivox_);
+    load_parameters();
+    init_system_mode();
     
     path.header.stamp    = ros::Time().fromSec(lidar_end_time);
     path.header.frame_id ="camera_init";
@@ -570,7 +724,14 @@ int main(int argc, char** argv)
                 }
             }
 #endif
+#ifdef PGO
+            if (!system_state_vaild)
+            {
+                run_relocalization(Measures.lidar, 0);
+            }
+#endif
             Timer timer;
+#if 0
             if (flg_reset)
             {
                 ROS_WARN("reset when rosbag play back");
@@ -597,6 +758,7 @@ int main(int argc, char** argv)
                     // }
                 }
             }
+#endif
 
             if (flg_first_scan)
             {
@@ -695,6 +857,7 @@ int main(int argc, char** argv)
                 else{
                 continue;}
             }
+#if 0
             /*** initialize the map ***/
             if(!init_map && !nolidar && !lose_lid)
             {
@@ -723,6 +886,7 @@ int main(int argc, char** argv)
                 }
                 continue;
             }
+#endif
 
             /*** ICP and Kalman filter update ***/
             normvec->resize(feats_down_size);
@@ -1779,11 +1943,13 @@ int main(int argc, char** argv)
                 publish_odometry(pubOdomAftMapped);
             }
 
+#if 0
             /*** add the feature points to map ***/
             if(feats_down_size > 4)
             {
                 MapIncremental();
             }
+#endif
 
 #ifdef PGO
             LOG_INFO("location valid. feats_down = %lu, cost time = %.1fms.", feats_down_world->size(), timer.elapsedLast());
