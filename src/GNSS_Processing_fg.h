@@ -64,6 +64,7 @@ class GNSSProcess
   void processIMU(double dt, const Vector3d &linear_acceleration, const Vector3d &angular_velocity);
   Eigen::Vector3d local2enu(Eigen::Matrix3d enu_rot, Eigen::Vector3d anc, Eigen::Vector3d &pos);
   void SetInit();
+  void SetLidarInit(const state_output &state, const Eigen::Vector3d &anc_ecef, const Eigen::Matrix3d &R_ecef_enu, const double &lidar_time);
   bool AddFactor(gtsam::Rot3 rel_rot_, gtsam::Point3 rel_pos_, gtsam::Vector3 rel_v_, Eigen::Vector3d state_gravity, double delta_t, double time_current,
                 Eigen::Vector3d ba, Eigen::Vector3d bg,  Eigen::Vector3d pos, Eigen::Vector3d vel, Eigen::Vector3d acc, Eigen::Vector3d omg, Eigen::Matrix3d rot);
   std::map<sat_first, std::map<uint32_t, double[6]>> sat2cp; // 

@@ -688,6 +688,16 @@ int main(int argc, char** argv)
 #endif
                 if (!run_relocalization(Measures.lidar, 0))
                     continue;
+                else
+                {
+                    p_gnss->anc_ecef = Eigen::Vector3d(-2169507.8190338304, 4385248.6857279418, 4078236.5150647047);
+                    p_gnss->R_ecef_enu << -0.896309, 0.285046, -0.339674,
+                        -0.44343, -0.576167, 0.686587,
+                        0, 0.766016, 0.642822;
+                    p_gnss->SetLidarInit(kf_output.x_, p_gnss->anc_ecef, p_gnss->R_ecef_enu, Measures.lidar_last_time);
+                    p_gnss->gnss_ready = true;
+                    ROS_INFO("GNSS Initialization is done");
+                }
             }
 #endif
             Timer timer;

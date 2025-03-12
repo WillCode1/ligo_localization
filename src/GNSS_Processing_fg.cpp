@@ -1238,3 +1238,61 @@ void GNSSProcess::SetInit()
     id_accumulate += 4;
   }
 }
+
+void GNSSProcess::SetLidarInit(const state_output &state, const Eigen::Vector3d &anc_ecef, const Eigen::Matrix3d &R_ecef_enu, const double &lidar_time)
+{
+  // Eigen::Matrix3d R_enu_local_;
+  // R_enu_local_ = R_ecef_enu; // * Rot_gnss_init; // * Eigen::AngleAxisd(yaw_enu_local, Eigen::Vector3d::UnitZ())
+  // prior factor
+  Eigen::Matrix<double, 6, 1> init_vel_bias_vector;
+  Eigen::Matrix<double, 12, 1> init_others_vector;
+  // init_vel_bias_vector.block<3,1>(0,0) = Rot_gnss_init.transpose() * pos_window[wind_size];
+  init_vel_bias_vector.block<3, 1>(0, 0) = state.pos;
+  init_vel_bias_vector.block<3, 1>(3, 0) = state.vel;               // vel_window[wind_size];
+  init_others_vector.block<3, 1>(0, 0) = Eigen::Vector3d::Zero();   // vel_window[wind_size];
+  init_others_vector.block<3, 1>(3, 0) = Eigen::Vector3d::Zero();   // vel_window[wind_size];
+  init_others_vector.block<3, 1>(6, 0) = Eigen::Vector3d::Zero();   // vel_window[wind_size];
+  init_others_vector.block<3, 1>(9, 0) = Eigen::Vector3d::Zero();   // vel_window[wind_size];
+  // dt[0] = para_rcv_dt[wind_size*4]; dt[1] = para_rcv_dt[wind_size*4+1], dt[2] = para_rcv_dt[wind_size*4+2], dt[3] = para_rcv_dt[wind_size*4+3];
+  // ddt = para_rcv_ddt[wind_size];
+  p_assign->initialEstimate.insert(R(0), gtsam::Rot3(state.rot));   //.transpose() * rot_window[wind_size]));
+  p_assign->initialEstimate.insert(G(0), gtsam::Vector3(gravity_init)); //.transpose() * rot_window[wind_size]));
+  // p_assign->initialEstimate.insert(F(0), gtsam::Vector12(init_vel_bias_vector));
+  p_assign->initialEstimate.insert(A(0), gtsam::Vector6(init_vel_bias_vector));
+  p_assign->initialEstimate.insert(O(0), gtsam::Vector12(init_others_vector));
+  // p_assign->initialEstimate.insert(B(0), gtsam::Vector4(para_rcv_dt[wind_size*4], para_rcv_dt[wind_size*4+1], para_rcv_dt[wind_size*4+2], para_rcv_dt[wind_size*4+3]));
+  p_assign->initialEstimate.insert(B(0), gtsam::Vector4(para_rcv_dt[4 * wind_size], para_rcv_dt[4 * wind_size], para_rcv_dt[4 * wind_size], para_rcv_dt[4 * wind_size])); //(1429495.922912-134967.935, 1429510.167255-134967.935, 1429516.520987-134967.935, 1429082.399893-134967.935)); //
+  // p_assign->initialEstimate.insert(C(0), gtsam::Vector1(para_rcv_ddt[wind_size]));
+  p_assign->initialEstimate.insert(C(0), gtsam::Vector1(para_rcv_ddt[0])); //(163.119147)); //(161.874045)
+  // p_assign->initialEstimate.insert(Y(0), gtsam::Vector1(yaw_enu_local));
+  p_assign->initialEstimate.insert(E(0), gtsam::Vector3(anc_ecef[0], anc_ecef[1], anc_ecef[2]));
+  // cout << anc_ecef.transpose() << endl;
+  p_assign->initialEstimate.insert(P(0), gtsam::Rot3(R_ecef_enu));
+
+  gtsam::PriorFactor<gtsam::Rot3> init_rot_ext(P(0), gtsam::Rot3(R_ecef_enu), p_assign->priorextrotNoise);
+  gtsam::PriorFactor<gtsam::Vector3> init_pos_ext(E(0), gtsam::Vector3(anc_ecef[0], anc_ecef[1], anc_ecef[2]), p_assign->priorextposNoise);
+  // gtsam::PriorFactor<gtsam::Vector4> init_dt(B(0), gtsam::Vector4(para_rcv_dt[wind_size*4], para_rcv_dt[wind_size*4+1], para_rcv_dt[wind_size*4+2], para_rcv_dt[wind_size*4+3]), p_assign->priordtNoise);
+  gtsam::PriorFactor<gtsam::Vector4> init_dt(B(0), gtsam::Vector4(para_rcv_dt[4 * wind_size], para_rcv_dt[4 * wind_size], para_rcv_dt[4 * wind_size], para_rcv_dt[4 * wind_size]), p_assign->priordtNoise);
+  // gtsam::PriorFactor<gtsam::Vector1> init_ddt(C(0), gtsam::Vector1(para_rcv_ddt[wind_size]), p_assign->priorddtNoise);
+  gtsam::PriorFactor<gtsam::Vector1> init_ddt(C(0), gtsam::Vector1(para_rcv_ddt[0]), p_assign->priorddtNoise); // (161.874045) 163.119147
+  gtsam::PriorFactor<gtsam::Rot3> init_rot_(R(0), gtsam::Rot3(Rot_gnss_init), p_assign->priorrotNoise);
+  gtsam::PriorFactor<gtsam::Vector6> init_vel_(A(0), gtsam::Vector6(init_vel_bias_vector), p_assign->priorNoise);      // priorposNoise);
+  gtsam::PriorFactor<gtsam::Vector12> init_bias_(O(0), gtsam::Vector12(init_others_vector), p_assign->priorBiasNoise); // priorposNoise);
+  gtsam::PriorFactor<gtsam::Vector3> init_grav_(G(0), gtsam::Vector3(gravity_init), p_assign->priorGravNoise);
+  p_assign->gtSAMgraph.add(init_rot_ext);
+  p_assign->gtSAMgraph.add(init_pos_ext);
+  p_assign->gtSAMgraph.add(init_dt);
+  p_assign->gtSAMgraph.add(init_ddt);
+  p_assign->gtSAMgraph.add(init_rot_);
+  p_assign->gtSAMgraph.add(init_vel_);
+  p_assign->gtSAMgraph.add(init_bias_);
+  p_assign->gtSAMgraph.add(init_grav_);
+  p_assign->factor_id_frame.push_back(std::vector<size_t>{0, 1, 2, 3, 4, 5, 6, 7});
+  id_accumulate += 8;
+
+  frame_num = 1; // frame_count;
+  last_gnss_time = lidar_time;
+  first_gnss_time = lidar_time;
+
+  runISAM2opt();
+}
