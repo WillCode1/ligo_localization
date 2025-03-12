@@ -684,6 +684,7 @@ int main(int argc, char** argv)
                     else
                         system_state_vaild = true;
                 }
+                else
 #endif
                 if (!run_relocalization(Measures.lidar, 0))
                     continue;
