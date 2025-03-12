@@ -301,13 +301,15 @@ void load_parameters()
     ros::param::param("/laserMapping/scan_context/lidar_height", relocalization->sc_manager->LIDAR_HEIGHT, 2.0);
     ros::param::param("/laserMapping/scan_context/sc_dist_thres", relocalization->sc_manager->SC_DIST_THRES, 0.5);
 
-    ros::param::param("/laserMapping/mapping/extrinsicT_imu2gnss", extrinT, vector<double>());
-    ros::param::param("/laserMapping/mapping/extrinsicR_imu2gnss", extrinR, vector<double>());
     V3D extrinT_eigen;
     M3D extrinR_eigen;
+#if 0
+    ros::param::param("/laserMapping/mapping/extrinsicT_imu2gnss", extrinT, vector<double>());
+    ros::param::param("/laserMapping/mapping/extrinsicR_imu2gnss", extrinR, vector<double>());
     extrinT_eigen << VEC_FROM_ARRAY(extrinT);
     extrinR_eigen << MAT_FROM_ARRAY(extrinR);
     relocalization->set_extrinsic(extrinT_eigen, extrinR_eigen);
+#endif
 
     ros::param::param("/laserMapping/relocalization_cfg/algorithm_type", relocalization->algorithm_type, std::string("UNKONW"));
 
@@ -658,9 +660,10 @@ int main(int argc, char** argv)
         ros::spinOnce();
         if(sync_packages(Measures, p_gnss->gnss_msg, p_nmea->nmea_msg)) 
         {
-#if 0
-            if (!p_gnss->gnss_ready)
+#if 1
+            if (!system_state_vaild)
             {
+#if 0
                 if (!p_gnss->gnss_msg.empty() && GNSS_ENABLE)
                 {
                     gnss_cur = p_gnss->gnss_msg.front();
@@ -677,16 +680,13 @@ int main(int argc, char** argv)
                     // p_gnss->sqrt_lidar = Eigen::LLT<Eigen::Matrix<double, 24, 24>>(kf_output.P_.inverse()).matrixL().transpose();
                     // update_gnss = p_gnss->Evaluate(kf_output.x_);
                     if (!p_gnss->gnss_ready)
-                    {
                         continue;
-                    }
+                    else
+                        system_state_vaild = true;
                 }
-            }
 #endif
-#if 1
-            if (!system_state_vaild)
-            {
-                run_relocalization(Measures.lidar, 0);
+                if (!run_relocalization(Measures.lidar, 0))
+                    continue;
             }
 #endif
             Timer timer;
