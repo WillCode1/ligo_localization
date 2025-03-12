@@ -45,6 +45,7 @@
 #include <pcl/io/pcd_io.h>
 #include <tf/transform_datatypes.h>
 #include <tf/transform_broadcaster.h>
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include "li_initialization.h"
 #include <malloc.h>
 // #include <cv_bridge/cv_bridge.h>
@@ -80,9 +81,12 @@ shared_ptr<Relocalization> relocalization;
 
 V3D euler_cur;
 
+std::string map_frame = "map";
+std::string odom_frame = "odom";
 nav_msgs::Path path;
 nav_msgs::Odometry odomAftMapped;
 geometry_msgs::PoseStamped msg_body_pose;
+ros::Publisher pubGlobalMap;
 
 void SigHandle(int sig)
 {
@@ -146,7 +150,7 @@ void publish_init_map(const ros::Publisher & pubLaserCloudFullRes)
     pcl::toROSMsg(*init_feats_world, laserCloudmsg);
         
     laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time);
-    laserCloudmsg.header.frame_id = "camera_init";
+    laserCloudmsg.header.frame_id = map_frame;
     pubLaserCloudFullRes.publish(laserCloudmsg);
 }
 
@@ -175,7 +179,7 @@ void publish_frame_world(const ros::Publisher & pubLaserCloudFullRes)
         pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
         
         laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time); // (map_time); // 
-        laserCloudmsg.header.frame_id = "camera_init";
+        laserCloudmsg.header.frame_id = map_frame;
         pubLaserCloudFullRes.publish(laserCloudmsg);
         // publish_count -= PUBFRAME_PERIOD;
     }
@@ -248,8 +252,8 @@ void set_posestamp(T & out)
 
 void publish_odometry(const ros::Publisher & pubOdomAftMapped)
 {
-    odomAftMapped.header.frame_id = "camera_init";
-    odomAftMapped.child_frame_id = "aft_mapped";
+    odomAftMapped.header.frame_id = map_frame;
+    odomAftMapped.child_frame_id = odom_frame;
     if (publish_odometry_without_downsample)
     {
         odomAftMapped.header.stamp = ros::Time().fromSec(time_current);
@@ -273,7 +277,7 @@ void publish_odometry(const ros::Publisher & pubOdomAftMapped)
     q.setY(odomAftMapped.pose.pose.orientation.y);
     q.setZ(odomAftMapped.pose.pose.orientation.z);
     transform.setRotation( q );
-    br.sendTransform( tf::StampedTransform( transform, odomAftMapped.header.stamp, "camera_init", "aft_mapped" ) );
+    br.sendTransform( tf::StampedTransform( transform, odomAftMapped.header.stamp, map_frame, odom_frame ) );
 }
 
 void publish_path(const ros::Publisher pubPath)
@@ -281,7 +285,7 @@ void publish_path(const ros::Publisher pubPath)
     set_posestamp(msg_body_pose.pose);
     // msg_body_pose.header.stamp = ros::Time::now();
     msg_body_pose.header.stamp = ros::Time().fromSec(lidar_end_time);
-    msg_body_pose.header.frame_id = "camera_init";
+    msg_body_pose.header.frame_id = map_frame;
     static int jjj = 0;
     jjj++;
     // if (jjj % 2 == 0) // if path is too large, the rvis will crash
@@ -353,6 +357,7 @@ void load_parameters()
 }
 
 bool system_state_vaild = false;
+PointCloudType::Ptr global_map;
 
 bool run_relocalization(PointCloudType::Ptr scan, const double &lidar_beg_time)
 {
@@ -406,7 +411,6 @@ void init_system_mode()
     }
 
     Timer timer;
-    PointCloudType::Ptr global_map;
     global_map.reset(new PointCloudType());
     pcl::io::loadPCDFile(globalmap_path, *global_map);
     if (global_map->points.size() < 5000)
@@ -441,6 +445,37 @@ void init_system_mode()
     init_global_map(global_map);
 }
 
+void publish_global_map(const ros::TimerEvent &)
+{
+    if (pubGlobalMap.getNumSubscribers() != 0)
+    {
+        sensor_msgs::PointCloud2 cloud_msg;
+        pcl::toROSMsg(*global_map, cloud_msg);
+        cloud_msg.header.stamp = ros::Time::now();
+        cloud_msg.header.frame_id = map_frame;
+        pubGlobalMap.publish(cloud_msg);
+    }
+}
+
+void initialPoseCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr &msg)
+{
+    const geometry_msgs::Pose &pose = msg->pose.pose;
+    const auto &ori = msg->pose.pose.orientation;
+    Eigen::Quaterniond quat(ori.w, ori.x, ori.y, ori.z);
+    auto rpy = EigenMath::Quaternion2RPY(quat);
+    // prior pose in map(imu pose)
+    Pose init_pose;
+    init_pose.x = pose.position.x;
+    init_pose.y = pose.position.y;
+    init_pose.z = pose.position.z;
+    // init_pose.roll = DEG2RAD(lidar_turnover_roll);
+    // init_pose.pitch = DEG2RAD(lidar_turnover_pitch);
+    init_pose.roll = 0;
+    init_pose.pitch = 0;
+    init_pose.yaw = rpy.z();
+    relocalization->set_init_pose(init_pose);
+}
+
 int main(int argc, char** argv)
 {
     ros::init(argc, argv, "laserMapping");
@@ -457,7 +492,7 @@ int main(int argc, char** argv)
 #endif
     
     path.header.stamp    = ros::Time().fromSec(lidar_end_time);
-    path.header.frame_id ="camera_init";
+    path.header.frame_id =map_frame;
 
     /*** variables definition for counting ***/
     int frame_num = 0;
@@ -593,89 +628,6 @@ int main(int argc, char** argv)
             sub_rtk_pvt_info = nh.subscribe(rtk_pvt_topic, 100, rtk_pvt_callback);
         }
     }
-#if 0
-    #ifdef process_ppp
-    if (NMEA_ENABLE)
-    {
-        std::vector<Eigen::Vector4d> gt_holder;
-        // GtfromTXT_DJI(string("/home/joannahe/NewDisk/self-collected/gt_deg2.txt"), gt_urbannav_holder);
-        // std::vector<Eigen::Vector4d>().swap(gt_urbannav_holder);
-        // GtfromTXT(string("/home/joannahe/NewDisk/gnss-lio/urbannav/gt/UrbanNav_TST_GT_raw.txt"), gt_urbannav_holder);
-        // GtfromTXT(string("/home/joannahe/NewDisk/gnss-lio/urbannav/gt/UrbanNav_whampoa_raw.txt"), gt_urbannav_holder);
-        // GtfromTXT(string("/home/joannahe/NewDisk/gnss-lio/urbannav/gt/UrbanNav_mongkok_GT_part_raw.txt"), gt_urbannav_holder);
-        // GtfromTXT(string("/home/joannahe/NewDisk/gnss-lio/urbannav/gt/UrbanNav_tunnel_GT_raw.txt"), gt_urbannav_holder);
-        // GtfromTXT_M2DGR(string("/home/joannahe/NewDisk/m2dgr/M2DGR-plus/gt/tree3x.txt"), gt_urbannav_holder);
-        // GtfromTXT_M2DGR(string("/home/joannahe/NewDisk/m2dgr/M2DGR-plus/gt/switch2_rawcut.txt"), gt_urbannav_holder);
-        if (gt_file_type == LIVOX)
-        {
-            GtfromTXT_LIVOX(LOCAL_FILE_DIR(gt_fname), gt_holder);
-        }
-        else if (gt_file_type == URBAN)
-        {
-            GtfromTXT_URBAN(LOCAL_FILE_DIR(gt_fname), gt_holder);
-        }
-        else if (gt_file_type == M2DGR)
-        {
-            GtfromTXT_M2DGR(LOCAL_FILE_DIR(gt_fname), gt_holder);
-        }
-        // GtfromTXT_M2DGR(string("/home/joannahe/NewDisk/m2dgr/M2DGR-plus/gt/parking2.txt"), gt_urbannav_holder);
-        // GtfromTXT_M2DGR(string("/home/joannahe/NewDisk/m2dgr/M2DGR-plus/gt/bridge2.txt"), gt_urbannav_holder);
-        if (gt_file_type == M2DGR)
-        {
-            for (size_t i = 0; i < gt_holder.size(); i++)
-            {
-                inputpvt_ecef(gt_holder[i][0], gt_holder[i][1], gt_holder[i][2], gt_holder[i][3], p_gnss->first_lla_pvt, p_gnss->first_xyz_ecef_pvt, p_gnss->pvt_time, 
-                        p_gnss->pvt_holder, p_gnss->diff_holder, p_gnss->float_holder); // 
-            }
-        }
-        else
-        {
-            for (size_t i = 0; i < gt_holder.size(); i++)
-            {
-                inputpvt_lla(gt_holder[i][0], gt_holder[i][1], gt_holder[i][2], gt_holder[i][3], p_gnss->first_lla_pvt, p_gnss->first_xyz_ecef_pvt, p_gnss->pvt_time, 
-                        p_gnss->pvt_holder, p_gnss->diff_holder, p_gnss->float_holder); // 
-            }
-        }
-    }
-    
-    PPPfromTXT(LOCAL_FILE_DIR(ppp_fname), ppp_sol, ppp_ecef);
-    if (NMEA_ENABLE)
-    {
-
-        first_pvt_anc = p_gnss->first_xyz_ecef_pvt;
-        first_lla_anc = p_gnss->first_lla_pvt;
-        if (p_gnss->p_assign->pvt_is_gt)
-        {
-            first_pvt_anc << VEC_FROM_ARRAY(ppp_anc);
-            first_lla_anc = ecef2geo(first_pvt_anc);
-        }
-        // first_pvt_anc << 3959058.559396,-87615.730649,4983325.235812; //  -2152900.934855,4380649.467661,4091851.462459; // bri 
-        // -2414309.951157,5388624.811131,2403467.959772; // main2 // -2169505.899002,4385241.855870,4078231.236204; // out // 
-        first_pvt_used = ppp_ecef[0].segment<3>(1);
-        first_lla_used = ecef2geo(first_pvt_used);
-        for (int i = 0; i < ppp_sol.size(); i++)
-        {   
-            // Eigen::Vector3d ppp_enu = ecef2enu(p_gnss->first_lla_pvt, ppp_ecef[i].segment<3>(1) - p_gnss->first_xyz_ecef_pvt);
-            // Eigen::Vector3d ppp_enu = ecef2enu(first_lla, ppp_ecef[i].segment<3>(1) - first_pvt);
-            nav_msgs::Odometry gps_odom;
-            gps_odom.header.stamp = ros::Time().fromSec(ppp_sol[i][0]);
-            // gps_odom->header.frame_id = "map";
-            gps_odom.pose.pose.position.x = ppp_sol[i][1]; //[1];
-            gps_odom.pose.pose.position.y = ppp_sol[i][2]; //[2];
-            gps_odom.pose.pose.position.z = ppp_sol[i][3]; //[3];
-            gps_odom.pose.covariance[0] = ppp_sol[i][4]; //[4];
-            gps_odom.pose.covariance[1] = ppp_sol[i][5]; //[4];
-            gps_odom.pose.covariance[2] = ppp_sol[i][6]; //[4];
-            nmea_meas_buf.push(nav_msgs::OdometryPtr(new nav_msgs::Odometry(gps_odom)));
-        }
-    }
-    #endif
-    if (NMEA_ENABLE)
-    {
-        // sub_nmea_meas = nh.subscribe(nmea_meas_topic, 10000, nmea_meas_callback);
-        // sub_nmea_meas = nh.subscribe(nmea_meas_topic, 10000, gpsHandler);
-    }
-#endif
 
     ros::Publisher pubLaserCloudFullRes = nh.advertise<sensor_msgs::PointCloud2>
             ("/cloud_registered", 1000);
@@ -692,6 +644,9 @@ int main(int argc, char** argv)
     ros::Publisher plane_pub = nh.advertise<visualization_msgs::Marker>
             ("/planner_normal", 1000);
     // ros::Publisher pub_gnss_lla = nh.advertise<sensor_msgs::NavSatFix>("gnss_fused_lla", 1000);
+    pubGlobalMap = nh.advertise<sensor_msgs::PointCloud2>("/global_map", 1);
+    ros::Timer timer = nh.createTimer(ros::Duration(2.0), publish_global_map);
+    ros::Subscriber sub_initpose = nh.subscribe("/initialpose", 1, initialPoseCallback);
     
 //------------------------------------------------------------------------------------------------------
     signal(SIGINT, SigHandle);
@@ -735,34 +690,6 @@ int main(int argc, char** argv)
             }
 #endif
             Timer timer;
-#if 0
-            if (flg_reset)
-            {
-                ROS_WARN("reset when rosbag play back");
-                p_imu->Reset();
-                feats_undistort.reset(new PointCloudXYZI());
-                {
-                    state_out = state_output();
-                    kf_output.change_P(P_init_output);
-                }
-                is_first_gnss = true;
-                flg_first_scan = true;
-                is_first_frame = true;
-                flg_reset = false;
-                init_map = false;
-                
-                {
-                    ivox_.reset(new IVoxType(ivox_options_));
-                    ivox_last_.reset(new IVoxType(ivox_options_)); // = std::make_shared<IVoxType>(*ivox_);
-                    traj_manager.reset(new curvefitter::TrajectoryManager<4>());
-                    // while (!empty_voxels.empty())
-                    // {
-                        // std::unordered_set<Eigen::Matrix<int, 3, 1>, faster_lio::hash_vec<3>>().swap(empty_voxels[0]);
-                        // empty_voxels.pop_front();
-                    // }
-                }
-            }
-#endif
 
             if (flg_first_scan)
             {
@@ -861,36 +788,6 @@ int main(int argc, char** argv)
                 else{
                 continue;}
             }
-#if 0
-            /*** initialize the map ***/
-            if(!init_map && !nolidar && !lose_lid)
-            {
-                feats_down_world->resize(feats_undistort->size());
-                for(int i = 0; i < feats_undistort->size(); i++)
-                {
-                    {
-                        pointBodyToWorld(&(feats_undistort->points[i]), &(feats_down_world->points[i]));
-                    }
-                }
-                for (size_t i = 0; i < feats_down_world->size(); i++) 
-                {
-                    init_feats_world->points.emplace_back(feats_down_world->points[i]);
-                }
-                if(init_feats_world->size() < init_map_size) 
-                {init_map = false;}
-                else
-                {   
-                    ivox_->AddPoints(init_feats_world->points);
-                    // 
-                    publish_init_map(pubLaserCloudMap); //(pubLaserCloudFullRes);
-                    
-                    init_feats_world.reset(new PointCloudXYZI());
-                    init_map = true;
-                    if (GNSS_ENABLE || NMEA_ENABLE) traj_manager->ResetTrajectory(pose_graph_key_pose, pose_time_vector, LiDAR_points, points_num);
-                }
-                continue;
-            }
-#endif
 
             /*** ICP and Kalman filter update ***/
             normvec->resize(feats_down_size);
@@ -1509,16 +1406,7 @@ int main(int argc, char** argv)
                     if (publish_odometry_without_downsample)
                     {
                         /******* Publish odometry *******/
-
                         publish_odometry(pubOdomAftMapped);
-#if 0
-                        if (runtime_pos_log)
-                        {
-                            euler_cur = SO3ToEuler(kf_output.x_.rot);
-                            fout_out << setw(20) << Measures.lidar_beg_time - first_lidar_time << " " << kf_output.x_.pos.transpose() << " " << euler_cur.transpose() << " " << kf_output.x_.vel.transpose() \
-                            <<" "<<kf_output.x_.omg.transpose()<<" "<<kf_output.x_.acc.transpose()<<" "<<kf_output.x_.gravity.transpose()<<" "<<kf_output.x_.bg.transpose()<<" "<<kf_output.x_.ba.transpose() << endl;
-                        }
-#endif
                     }
                     std::vector<Eigen::Vector3d> lidarpoints;
                     for (int j = 0; j < time_seq[k]; j++)
@@ -1949,15 +1837,7 @@ int main(int argc, char** argv)
                 publish_odometry(pubOdomAftMapped);
             }
 
-#if 0
-            /*** add the feature points to map ***/
-            if(feats_down_size > 4)
-            {
-                MapIncremental();
-            }
-#endif
-
-#ifdef PGO
+#if 1
             LOG_INFO("location valid. feats_down = %lu, cost time = %.1fms.", feats_down_world->size(), timer.elapsedLast());
 #endif
             t5 = omp_get_wtime();
@@ -1965,86 +1845,10 @@ int main(int argc, char** argv)
             if (path_en)                         publish_path(pubPath);
             if (scan_pub_en || pcd_save_en)      publish_frame_world(pubLaserCloudFullRes);
             if (scan_pub_en && scan_body_pub_en) publish_frame_body(pubLaserCloudFullRes_body);
-
-#if 0
-            /*** Debug variables Logging ***/
-            if (runtime_pos_log)
-            {
-                frame_num ++;
-                aver_time_consu = aver_time_consu * (frame_num - 1) / frame_num + (t5 - t0) / frame_num;
-                s_plot[time_log_counter] = t5 - t0;
-                s_plot3[time_log_counter] = aver_time_consu;
-                time_log_counter ++;
-                if (!publish_odometry_without_downsample)
-                {
-                    {
-                        {
-                            Eigen::Matrix3d R_enu_local_;
-                            Eigen::Vector3d pos_r = kf_output.x_.rot * p_gnss->Tex_imu_r + kf_output.x_.pos; // .normalized()
-                            time_frame.push_back(lidar_end_time); //(time_predict_last_const);
-                            est_poses.push_back(pos_r);
-                        }
-                        euler_cur = SO3ToEuler(kf_output.x_.rot);
-                        fout_out << setw(20) << Measures.lidar_beg_time - first_lidar_time << " " << kf_output.x_.pos.transpose() << " " << euler_cur.transpose() << " " << kf_output.x_.vel.transpose() \
-                        <<" "<<state_out.omg.transpose()<<" "<<state_out.acc.transpose()<<" "<<state_out.gravity.transpose()<<" "<<state_out.bg.transpose()<<" "<<state_out.ba.transpose() << endl;
-                    }
-                }
-            }
-#endif
         }
         status = ros::ok();
         loop_rate.sleep();
     }
-#if 0
-    fout_out.close();
-
-    //--------------------------save map-----------------------------------
-    /* 1. make sure you have enough memories
-    /* 2. noted that pcd save will influence the real-time performences **/
-    if (pcl_wait_save->size() > 0 && pcd_save_en)
-    {
-        string file_name = string("scans.pcd");
-        string all_points_dir(string(string(ROOT_DIR) + "PCD/") + file_name);
-        pcl::PCDWriter pcd_writer;
-        pcd_writer.writeBinary(all_points_dir, *pcl_wait_save);
-    }
-    // if (GNSS_ENABLE || NMEA_ENABLE)
-    {
-        Eigen::Matrix3d enu_rot = ecef2rotation(first_pvt_used);
-        for (int i = 0; i < time_frame.size(); i++)
-        {
-            // Eigen::Vector3d euler_ext = SO3ToEuler(local_rots[i]);
-            if (NMEA_ENABLE)
-            {
-                Eigen::Vector3d ecef_r = enu_rot * est_poses[i] + first_pvt_used;
-                Eigen::Vector3d pos_enu = ecef2enu(first_lla_anc, ecef_r - first_pvt_anc);
-                fout_global << setw(20) << time_frame[i] - ppp_ecef[0][0] + 18.0 << " " << pos_enu.transpose() << endl; //"\n"; // p_gnss->pvt_time[0] + 18.0
-            }
-            else
-            {
-                fout_global << setw(20) << time_frame[i] - time_frame[0] << " " << est_poses[i].transpose() << endl; // << " " << local_poses[i].transpose() << " " << euler_ext.transpose() << endl; //"\n"; // p_gnss->pvt_time[0] + 18.0
-                // fout_global << setw(20) << time_frame[i] - ppp_ecef[0][0] + 18.0 << " " << est_poses[i].transpose() << endl; //"\n"; // p_gnss->pvt_time[0] + 18.0
-            }
-            // printf("time: %f, pos: %f %f %f\n", ppp_ecef[0][0] + 18.0, est_poses[i](0), est_poses[i](1), est_poses[i](2));
-            // Eigen::Vector3d euler_ext = SO3ToEuler(local_rots[i]);
-        }
-        fout_global.close();
-    }
-
-    for (int i = 0; i < p_gnss->pvt_time.size(); i++)
-    {
-        fout_rtk << setw(20) << p_gnss->pvt_time[i] - p_gnss->pvt_time[0] << " " << p_gnss->pvt_holder[i].transpose() << " " << p_gnss->diff_holder[i] << " " << p_gnss->float_holder[i] << endl; // "\n";
-    }
-    fout_rtk.close();
-    #ifdef process_ppp
-    for (int i = 0; i < ppp_ecef.size(); i++)
-    {
-        Eigen::Vector3d pos_enu = ecef2enu(p_gnss->first_lla_pvt, ppp_ecef[i].segment<3>(1) - p_gnss->first_xyz_ecef_pvt);
-        fout_ppp << setw(20) << ppp_ecef[i][0] - ppp_ecef[0][0] << " " << pos_enu.transpose() << endl;
-    }
-    fout_ppp.close();
-    #endif
-#endif
     
     return 0;
 }
