@@ -437,7 +437,7 @@ void init_system_mode()
     else
         LOG_WARN("Load keyframe descriptor successfully! There are %lu descriptors.", relocalization->sc_manager->polarcontexts_.size());
 
-    /*** initialize the map kdtree ***/
+    /*** initialize the map ivox ***/
     init_global_map(global_map);
 }
 
