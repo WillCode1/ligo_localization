@@ -429,13 +429,13 @@ void init_system_mode()
     }
     LOG_WARN("Load trajectory poses successfully! There are %lu poses.", relocalization->trajectory_poses->points.size());
 
-    // if (!relocalization->load_keyframe_descriptor(scd_path))
-    // {
-    //     relocalization->algorithm_type = "manually_set";
-    //     LOG_ERROR("Load keyframe descriptor failed, set algorithm_type to manually_set!");
-    // }
-    // else
-    //     LOG_WARN("Load keyframe descriptor successfully! There are %lu descriptors.", relocalization->sc_manager->polarcontexts_.size());
+    if (!relocalization->load_keyframe_descriptor(scd_path))
+    {
+        relocalization->algorithm_type = "manually_set";
+        LOG_ERROR("Load keyframe descriptor failed, set algorithm_type to manually_set!");
+    }
+    else
+        LOG_WARN("Load keyframe descriptor successfully! There are %lu descriptors.", relocalization->sc_manager->polarcontexts_.size());
 
     /*** initialize the map kdtree ***/
     init_global_map(global_map);
@@ -451,8 +451,10 @@ int main(int argc, char** argv)
     cout<<"lidar_type: "<<lidar_type<<endl;
     ivox_ = std::make_shared<IVoxType>(ivox_options_);
     ivox_last_ = std::make_shared<IVoxType>(ivox_options_); //(*ivox_);
+#if 1
     load_parameters();
     init_system_mode();
+#endif
     
     path.header.stamp    = ros::Time().fromSec(lidar_end_time);
     path.header.frame_id ="camera_init";
