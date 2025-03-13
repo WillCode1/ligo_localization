@@ -694,6 +694,8 @@ int main(int argc, char** argv)
                     p_gnss->R_ecef_enu << -0.896309, 0.285046, -0.339674,
                         -0.44343, -0.576167, 0.686587,
                         0, 0.766016, 0.642822;
+                    kf_output.x_.pos = V3D(-0.0199728, -0.0152043, 0.0133042);
+                    kf_output.x_.rot << 0.998994, 0.000894, 0.044826, -0.001156, 0.999982, 0.005821, -0.044820, -0.005867, 0.998978;
                     p_gnss->SetLidarInit(kf_output.x_, p_gnss->anc_ecef, p_gnss->R_ecef_enu, Measures.lidar_last_time);
                     p_gnss->gnss_ready = true;
                     ROS_INFO("GNSS Initialization is done");
