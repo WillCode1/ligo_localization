@@ -75,8 +75,7 @@ gnss:
     gnss_ekf_noise: 0.01 # 0.1          # measurement cov for gnss in ekf of front-end
     gnss_local_online_sync: false                       # if perform online synchronization betwen GNSS and local time
     local_trigger_info_topic: "/external_trigger"       # external trigger info of the local sensor, if `gnss_local_online_sync` is true
-    # gnss_local_time_diff: 18.0 # 27.062                 # difference between GNSS and local time (s), if `gnss_local_online_sync` is false
-    gnss_local_time_diff: 0             # in rmc mode, the time is UTC
+    gnss_local_time_diff: 18.0 # 27.062                 # difference between GNSS and local time (s), if `gnss_local_online_sync` is false
     gnss_iono_default_parameters: [0.1118E-07,  0.2235E-07, -0.4172E-06,  0.6557E-06, 0.1249E+06, -0.4424E+06,  0.1507E+07, -0.2621E+06]
     gnss_extrinsic_T: [0.0055, 0.03626, 0.02212] # m300 [0.011, 0.03155, 0.02365] # h360 [0.0055, 0.03626, 0.02212] #m360 
     gnss_extrinsic_R: [ 1, 0, 0,
