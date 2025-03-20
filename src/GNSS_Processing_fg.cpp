@@ -1275,7 +1275,7 @@ void GNSSProcess::SetLidarInit(const state_output &state, const Eigen::Vector3d 
   gtsam::PriorFactor<gtsam::Vector4> init_dt(B(0), gtsam::Vector4(para_rcv_dt[4 * wind_size], para_rcv_dt[4 * wind_size], para_rcv_dt[4 * wind_size], para_rcv_dt[4 * wind_size]), p_assign->priordtNoise);
   // gtsam::PriorFactor<gtsam::Vector1> init_ddt(C(0), gtsam::Vector1(para_rcv_ddt[wind_size]), p_assign->priorddtNoise);
   gtsam::PriorFactor<gtsam::Vector1> init_ddt(C(0), gtsam::Vector1(para_rcv_ddt[0]), p_assign->priorddtNoise); // (161.874045) 163.119147
-  gtsam::PriorFactor<gtsam::Rot3> init_rot_(R(0), gtsam::Rot3(Rot_gnss_init), p_assign->priorrotNoise);
+  gtsam::PriorFactor<gtsam::Rot3> init_rot_(R(0), gtsam::Rot3(state.rot), p_assign->priorrotNoise);
   gtsam::PriorFactor<gtsam::Vector6> init_vel_(A(0), gtsam::Vector6(init_vel_bias_vector), p_assign->priorNoise);      // priorposNoise);
   gtsam::PriorFactor<gtsam::Vector12> init_bias_(O(0), gtsam::Vector12(init_others_vector), p_assign->priorBiasNoise); // priorposNoise);
   gtsam::PriorFactor<gtsam::Vector3> init_grav_(G(0), gtsam::Vector3(gravity_init), p_assign->priorGravNoise);

@@ -686,19 +686,18 @@ int main(int argc, char** argv)
                 }
                 else
 #endif
-                if (!run_relocalization(Measures.lidar, 0))
-                    continue;
-                else
+                // if (!run_relocalization(Measures.lidar, 0))
+                //     continue;
+                // else
                 {
-                    p_gnss->anc_ecef = Eigen::Vector3d(-2169507.8742181729, 4385248.6699813260, 4078236.5512984213);
-                    p_gnss->R_ecef_enu << -0.896309, 0.285046, -0.339674,
-                        -0.44343, -0.576167, 0.686587,
-                        0, 0.766016, 0.642822;
                     kf_output.x_.pos = V3D(-0.0199728, -0.0152043, 0.0133042);
                     kf_output.x_.rot << 0.998994, 0.000894, 0.044826, -0.001156, 0.999982, 0.005821, -0.044820, -0.005867, 0.998978;
+                    p_gnss->anc_ecef = Eigen::Vector3d(-2169507.8742181729, 4385248.6699813260, 4078236.5512984213);
+                    p_gnss->R_ecef_enu << -0.896309, 0.285046, -0.339674, -0.44343, -0.576167, 0.686587, 0, 0.766016, 0.642822;
                     p_gnss->SetLidarInit(kf_output.x_, p_gnss->anc_ecef, p_gnss->R_ecef_enu, Measures.lidar_last_time);
                     p_gnss->gnss_ready = true;
-                    ROS_INFO("GNSS Initialization is done");
+                    ROS_INFO("GNSS Initialization is done, by lidar!");
+                    system_state_vaild = true;
                 }
             }
 #endif
@@ -778,6 +777,7 @@ int main(int argc, char** argv)
                 time_seq.clear();
             }
          
+#if 0
             if (!p_imu->after_imu_init_)
             {
                 if (!p_imu->imu_need_init_)
@@ -801,6 +801,7 @@ int main(int argc, char** argv)
                 else{
                 continue;}
             }
+#endif
 
             /*** ICP and Kalman filter update ***/
             normvec->resize(feats_down_size);
@@ -1852,6 +1853,21 @@ int main(int argc, char** argv)
 
 #if 1
             LOG_INFO("location valid. feats_down = %lu, cost time = %.1fms.", feats_down_world->size(), timer.elapsedLast());
+            std::cout << std::fixed << std::setprecision(10);
+            std::cout << "pos = " << kf_output.x_.pos << std::endl;
+            printf("rot = %f, %f, %f, %f, %f, %f, %f, %f, %f\n",
+                   kf_output.x_.rot(0, 0), kf_output.x_.rot(0, 1), kf_output.x_.rot(0, 2),
+                   kf_output.x_.rot(1, 0), kf_output.x_.rot(1, 1), kf_output.x_.rot(1, 2),
+                   kf_output.x_.rot(2, 0), kf_output.x_.rot(2, 1), kf_output.x_.rot(2, 2));
+            Eigen::Vector3d anc_cur;
+            Eigen::Matrix3d R_enu_local_;
+            anc_cur = p_gnss->p_assign->isamCurrentEstimate.at<gtsam::Vector3>(E(0));
+            R_enu_local_ = p_gnss->p_assign->isamCurrentEstimate.at<gtsam::Rot3>(P(0)).matrix();
+            std::cout << "anc_cur = " << anc_cur.transpose() << std::endl;
+            printf("R_enu_local = %f, %f, %f, %f, %f, %f, %f, %f, %f\n",
+                   R_enu_local_(0, 0), R_enu_local_(0, 1), R_enu_local_(0, 2),
+                   R_enu_local_(1, 0), R_enu_local_(1, 1), R_enu_local_(1, 2),
+                   R_enu_local_(2, 0), R_enu_local_(2, 1), R_enu_local_(2, 2));
 #endif
             t5 = omp_get_wtime();
             /******* Publish points *******/
